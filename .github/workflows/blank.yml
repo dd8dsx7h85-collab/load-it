@@ -1,0 +1,109 @@
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const axios = require('axios');
+const cors = require('cors');
+const path = require('path');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+mongoose.set('strictQuery', true);
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("Mongo connected"))
+  .catch(err => console.error(err));
+
+const UserSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  savedVideos: { type: [{ videoId: String, title: String, savedAt: Date }], default: [] },
+  preferences: { type: Object, default: {} }
+});
+const User = mongoose.model('User', UserSchema);
+
+app.get('/api/youtube/search', async (req, res) => {
+  try {
+    const q = req.query.q || '';
+    const max = Math.min(req.query.max || 8, 50);
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${max}&q=${encodeURIComponent(q)}&key=${process.env.YOUTUBE_API_KEY}&type=video`;
+    const r = await axios.get(url);
+    res.json(r.data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'YouTube search failed' });
+  }
+});
+
+app.post('/api/users/save', async (req, res) => {
+  try {
+    const { username, savedVideos, preferences } = req.body;
+    if (!username) return res.status(400).json({ error: 'username is required' });
+
+    let user = await User.findOne({ username });
+    if (!user) {
+      user = new User({ username, savedVideos, preferences });
+    } else {
+      user.savedVideos = savedVideos || user.savedVideos;
+      user.preferences = preferences || user.preferences;
+    }
+    await user.save();
+    res.json({ ok: true, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'save failed' });
+  }
+});
+
+app.post('/api/webrtc/signal', (req, res) => {
+  res.json({ ok: true, note: "Replace with socket.io signalling for real time" });
+});
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(__dirname, '../dist/index.html'));
+    }
+  });
+}
+
+const port = process.env.PORT || 4000;
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+
+      # Runs a single command using the runners shell
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+      # Runs a set of commands using the runners shell
+      - name: Run a multi-line script
+        run: |
+          echo Add other actions to build,
+          echo test, and deploy your project.
